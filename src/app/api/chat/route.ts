@@ -1,20 +1,20 @@
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { convertToModelMessages, stepCountIs, streamText, type UIMessage } from "ai";
 import { buildTools } from "@/lib/tools";
 import { systemPrompt } from "@/lib/prompt";
 import { getSession } from "@/lib/session";
+import { NoProviderError, explainModelError, resolveModel } from "@/lib/model";
 
 export const maxDuration = 60;
 
-const MODEL = process.env.OPENROUTER_MODEL ?? "anthropic/claude-haiku-4.5";
-
 export async function POST(req: Request) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    return Response.json(
-      { error: "OPENROUTER_API_KEY is not set. Add it to .env.local or the Vercel project." },
-      { status: 500 },
-    );
+  let resolved;
+  try {
+    resolved = resolveModel();
+  } catch (err) {
+    if (err instanceof NoProviderError) {
+      return Response.json({ error: err.message }, { status: 500 });
+    }
+    throw err;
   }
 
   const body = (await req.json()) as {
@@ -29,10 +29,8 @@ export async function POST(req: Request) {
   // model. buildTools closes over it, so execute_action cannot bypass the gate.
   const confirmed = new Set(body.confirmedTokens ?? []);
 
-  const openrouter = createOpenRouter({ apiKey });
-
   const result = streamText({
-    model: openrouter.chat(MODEL),
+    model: resolved.model,
     system: systemPrompt(session),
     messages: await convertToModelMessages(body.messages),
     tools: buildTools(session, confirmed),
@@ -49,13 +47,7 @@ export async function POST(req: Request) {
     onError: (error) => {
       const message = error instanceof Error ? error.message : String(error);
       console.error("[chat] stream error:", message);
-      if (/402|insufficient credits/i.test(message)) {
-        return "The OpenRouter account has no credits. Add credits at openrouter.ai/settings/credits.";
-      }
-      if (/429|rate limit/i.test(message)) {
-        return "OpenRouter rate limit reached for this model. Try again shortly or switch OPENROUTER_MODEL.";
-      }
-      return `Upstream model error: ${message}`;
+      return explainModelError(message, resolved.provider);
     },
   });
 }

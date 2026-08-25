@@ -11,12 +11,12 @@
  *   npx tsx evals/run.ts            # all cases
  *   npx tsx evals/run.ts cancel     # cases whose id contains "cancel"
  */
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText, stepCountIs } from "ai";
 import { readFileSync } from "node:fs";
 import { buildTools } from "../src/lib/tools";
 import { systemPrompt } from "../src/lib/prompt";
 import { getSession } from "../src/lib/session";
+import { resolveModel } from "../src/lib/model";
 
 // Load .env.local without a dependency.
 for (const line of readFileSync(".env.local", "utf8").split("\n")) {
@@ -154,8 +154,9 @@ const CASES: Case[] = [
 async function main() {
   const filter = process.argv[2];
   const cases = filter ? CASES.filter((c) => c.id.includes(filter)) : CASES;
-  const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! });
-  const model = openrouter.chat(process.env.OPENROUTER_MODEL ?? "anthropic/claude-haiku-4.5");
+  const { model, provider, modelId } = resolveModel();
+  console.log(`provider: ${provider} / ${modelId}
+`);
 
   let passed = 0;
   const failures: string[] = [];

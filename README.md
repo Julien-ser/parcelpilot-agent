@@ -18,7 +18,7 @@ answer structurally hard rather than merely discouraged.
 npm install
 python -m pip install -r ingest/requirements.txt   # pdfplumber, pandas, openpyxl
 python ingest/build.py                              # data pack -> src/data/*.json
-cp .env.example .env.local                          # then add your OpenRouter key
+cp .env.example .env.local                          # then add one free model API key
 npm run dev                                         # http://localhost:3000
 ```
 
@@ -27,11 +27,18 @@ output is committed, so `npm run dev` works on a clean checkout without Python.
 
 ### Environment
 
-| Variable | Required | Notes |
-|---|---|---|
-| `OPENROUTER_API_KEY` | yes | From openrouter.ai. The account needs credits; the free tier is capped at 50 requests/day. |
-| `OPENROUTER_MODEL` | no | Defaults to `anthropic/claude-haiku-4.5`. Any tool-calling model works. |
-| `ACTION_SIGNING_SECRET` | no | HMAC key for action confirmation tokens. Set it in production. |
+Set **one** model provider. They are tried in the order listed.
+
+| Variable | Notes |
+|---|---|
+| `GOOGLE_GENERATIVE_AI_API_KEY` | [AI Studio](https://aistudio.google.com/apikey) — free tier, no card. Recommended for a hosted demo. Model via `GOOGLE_MODEL` (default `gemini-2.5-flash`). |
+| `GROQ_API_KEY` | [Groq](https://console.groq.com/keys) — free tier, no card. Model via `GROQ_MODEL` (default `llama-3.3-70b-versatile`). |
+| `OPENROUTER_API_KEY` | Model via `OPENROUTER_MODEL` (default `anthropic/claude-haiku-4.5`). Note: OpenRouter's free tier is capped at **50 requests/day** with no credit balance, which a deployed demo exhausts quickly. |
+| `ACTION_SIGNING_SECRET` | HMAC key for action confirmation tokens. Set it in production. |
+
+The agent's behaviour lives in the tools and the policy engine, not in any one
+vendor, so the provider is a swap in `src/lib/model.ts`. Any model with reliable
+tool calling works.
 
 ### Tests
 
