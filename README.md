@@ -74,6 +74,19 @@ order status and never addresses the question.
 
 ---
 
+## What it looks like
+
+The customer-facing chat, with the active scope shown under the header:
+
+![Chat interface](docs/chat.png)
+
+The internal operations dashboard — every signal computed deterministically, with its
+own evidence and citations:
+
+![Operations dashboard](docs/ops-dashboard.png)
+
+---
+
 ## What it does
 
 ### Two user contexts, one tool layer

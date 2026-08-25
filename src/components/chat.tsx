@@ -102,7 +102,7 @@ export function Chat({ users }: { users: UserOption[] }) {
   const examples = EXAMPLES[current.role === "customer" ? "customer" : "staff"];
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-screen">
       <header className="border-b" style={{ borderColor: "var(--border)" }}>
         <div className="max-w-5xl mx-auto px-5 py-3 flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2.5">
@@ -159,7 +159,7 @@ export function Chat({ users }: { users: UserOption[] }) {
         </div>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-5xl mx-auto px-5 py-6">
           {messages.length === 0 && (
             <div className="mt-6">
