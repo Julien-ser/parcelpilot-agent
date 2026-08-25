@@ -36,24 +36,23 @@ export class NoProviderError extends Error {
  * benchmark scores. Override per provider with *_MODEL.
  */
 const DEFAULTS = {
-  google: "gemini-2.5-flash",
-  groq: "llama-3.3-70b-versatile",
+  google: "gemini-3.6-flash",
+  groq: "openai/gpt-oss-120b",
   openrouter: "anthropic/claude-haiku-4.5",
 } as const;
 
 export function resolveModel(): ResolvedModel {
-  const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (googleKey) {
-    const modelId = process.env.GOOGLE_MODEL ?? DEFAULTS.google;
-    return {
-      model: createGoogleGenerativeAI({ apiKey: googleKey })(modelId),
-      provider: "google",
-      modelId,
-    };
-  }
+  // MODEL_PROVIDER forces one provider when several keys are configured, which
+  // is how the eval suite compares them.
+  const forced = process.env.MODEL_PROVIDER?.toLowerCase();
 
+  // Groq is tried first for a hosted demo. The free tiers fail in different
+  // shapes: Groq allows ~30 requests/minute but caps tokens per day, while
+  // Google allows only 5 requests/minute. One question here spends 3-4 requests
+  // on multi-step tool calls, so two questions in a minute would rate-limit on
+  // Google while Groq absorbs it.
   const groqKey = process.env.GROQ_API_KEY;
-  if (groqKey) {
+  if (groqKey && (!forced || forced === "groq")) {
     const modelId = process.env.GROQ_MODEL ?? DEFAULTS.groq;
     return {
       model: createGroq({ apiKey: groqKey })(modelId),
@@ -62,8 +61,18 @@ export function resolveModel(): ResolvedModel {
     };
   }
 
+  const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  if (googleKey && (!forced || forced === "google")) {
+    const modelId = process.env.GOOGLE_MODEL ?? DEFAULTS.google;
+    return {
+      model: createGoogleGenerativeAI({ apiKey: googleKey })(modelId),
+      provider: "google",
+      modelId,
+    };
+  }
+
   const openrouterKey = process.env.OPENROUTER_API_KEY;
-  if (openrouterKey) {
+  if (openrouterKey && (!forced || forced === "openrouter")) {
     const modelId = process.env.OPENROUTER_MODEL ?? DEFAULTS.openrouter;
     return {
       model: createOpenRouter({ apiKey: openrouterKey }).chat(modelId),

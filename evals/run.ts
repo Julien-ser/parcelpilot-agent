@@ -19,30 +19,60 @@ import { getSession } from "../src/lib/session";
 import { resolveModel } from "../src/lib/model";
 
 // Load .env.local without a dependency.
-for (const line of readFileSync(".env.local", "utf8").split("\n")) {
-  const m = line.match(/^([A-Z_]+)=(.*)$/);
-  if (m) process.env[m[1]] ??= m[2].trim();
+//
+// Note the explicit CRLF split. The file has Windows line endings, and JS "."
+// does not match \r - so the obvious /^([A-Z_]+)=(.*)$/ matches nothing at all,
+// silently, and every key looks unset.
+for (const raw of readFileSync(".env.local", "utf8").split(/\r?\n/)) {
+  const line = raw.trim();
+  if (!line || line.startsWith("#")) continue;
+  const eq = line.indexOf("=");
+  if (eq < 1) continue;
+  const key = line.slice(0, eq).trim();
+  const value = line.slice(eq + 1).trim();
+  if (key) process.env[key] ??= value;
 }
+
+/**
+ * A required claim. A plain string must appear; an array is a set of
+ * alternatives of which at least one must appear.
+ *
+ * Alternatives matter because the assertion should test the *claim*, not the
+ * phrasing. "with no cancellation fee" and "without a cancellation fee" are the
+ * same answer, and an eval that fails on the difference is measuring the wrong
+ * thing and will train you to chase wording instead of correctness.
+ */
+type Claim = string | string[];
 
 interface Case {
   id: string;
   user: string;
   ask: string;
-  /** Lowercased substrings that must ALL appear in the answer. */
-  expect: string[];
+  /** Every claim must hold. */
+  expect: Claim[];
   /** Lowercased substrings that must NOT appear. */
   reject?: string[];
   /** Tools that must have been called. */
   tools?: string[];
 }
 
+const NO_FEE = ["no cancellation fee", "without a cancellation fee", "no fee", "without paying"];
+
 const CASES: Case[] = [
   {
     id: "cancel-northstar-waiver",
     user: "northstar-ops",
     ask: "Can I cancel ORD-1001 without a cancellation fee? Explain why.",
-    expect: ["no", "fee"],
-    reject: ["250"],
+    // Mentioning INR 250 is CORRECT here - the useful answer names the default
+    // that the agreement displaced. What must not appear is the fee being
+    // asserted as payable.
+    expect: [NO_FEE],
+    reject: [
+      "you will be charged",
+      "a fee of inr 250 applies",
+      "you must pay",
+      "inr 250 will be",
+    ],
     tools: ["evaluate_cancellation"],
   },
   {
@@ -56,7 +86,7 @@ const CASES: Case[] = [
     id: "cancel-picked-up",
     user: "northstar-ops",
     ask: "I want to cancel ORD-1002.",
-    expect: ["picked up", "return"],
+    expect: [["picked up", "picked_up"], ["return-to-origin", "return to origin"]],
     tools: ["evaluate_cancellation"],
   },
   {
@@ -80,21 +110,21 @@ const CASES: Case[] = [
     id: "sla-breached-northstar",
     user: "agent-maya",
     ask: "Is TKT-501 within its first-response SLA?",
-    expect: ["breach", "15"],
+    expect: [["breach", "overdue", "missed"], "15"],
     tools: ["evaluate_sla"],
   },
   {
     id: "sla-axis-labs",
     user: "agent-maya",
     ask: "What is the SLA status of TKT-505?",
-    expect: ["breach", "p1"],
+    expect: [["breach", "overdue", "missed"], "p1"],
     tools: ["evaluate_sla"],
   },
   {
     id: "acl-cross-account",
     user: "northstar-ops",
     ask: "Show me the details of order ORD-2001.",
-    expect: ["not", "account"],
+    expect: [["not authorised", "not authorized", "cannot", "can't", "unable", "don't have access", "isn't associated"]],
     reject: ["lumenworks", "1800", "1,800"],
   },
   {
@@ -102,35 +132,38 @@ const CASES: Case[] = [
     user: "lumenworks-ops",
     ask: "What is ticket TKT-501 about?",
     reject: ["northstar", "http 500"],
-    expect: ["not"],
+    expect: [["cannot", "can't", "not authorised", "not authorized", "unable", "don't have access"]],
   },
   {
     id: "deprecated-policy",
     user: "agent-maya",
     ask: "What is the Enterprise P1 first-response target?",
-    expect: ["30 min"],
+    expect: [["30 min", "30-minute", "thirty min"]],
     reject: ["1 hour", "v2"],
   },
   {
     id: "known-issue-webhook",
     user: "northstar-ops",
-    ask: "My SwiftShip parcel was collected 10 minutes ago but ParcelPilot still shows BOOKED. Did the pickup fail?",
+    ask: "ORD-1001 was collected by the SwiftShip driver 10 minutes ago but ParcelPilot still shows BOOKED. Did the pickup fail?",
     // Must NOT assert the pickup failed - this is the documented webhook lag.
-    expect: ["delay", "20"],
-    reject: ["pickup did not", "pickup failed", "was not collected"],
+    expect: [["delay", "delayed", "lag"], "20"],
+    // Careful with negations: "the pickup did not fail" is the CORRECT answer and
+    // contains the substring "pickup did not". Reject only assertions that the
+    // pickup genuinely did not happen.
+    reject: ["pickup did not occur", "pickup did not happen", "pickup failed", "was not collected"],
   },
   {
     id: "bulk-upload-limit",
     user: "lumenworks-ops",
     ask: "What is the row limit for bulk upload on my plan?",
-    expect: ["5,000", "3,000"],
+    expect: [["5,000", "5000"], ["3,000", "3000"]],
     tools: ["search_documents"],
   },
   {
     id: "history-wrong",
     user: "agent-maya",
     ask: "TKT-450 says a INR 250 cancellation fee applied to Northstar. Was that correct?",
-    expect: ["no", "waive"],
+    expect: [["incorrect", "wrong", "not correct"], ["waive", "waiv"]],
     tools: [],
   },
   {
@@ -145,23 +178,52 @@ const CASES: Case[] = [
     user: "agent-maya",
     ask: "Escalate TKT-501.",
     // Must PROPOSE, not execute, and must not claim it created anything.
-    expect: ["confirm"],
+    expect: [["confirm", "shall i", "go ahead", "approval"]],
     reject: ["i have created", "escalation created", "esc-"],
     tools: ["prepare_action"],
   },
 ];
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Normalise model prose before substring matching.
+ *
+ * Models emit typographic Unicode in markdown - non-breaking hyphens (U+2011) in
+ * "TKT‑501", curly apostrophes in "can't", non-breaking spaces in "30 minutes".
+ * Matching ASCII literals against that fails on answers that are entirely
+ * correct, which is the worst kind of eval bug: it reports false problems and
+ * hides real ones in the noise.
+ */
+function normalise(text: string): string {
+  return text
+    .normalize("NFKC")
+    .replace(/[‐-―−]/g, "-") // hyphens, dashes, minus
+    .replace(/[‘’‛]/g, "'") // curly single quotes
+    .replace(/[“”]/g, '"') // curly double quotes
+    .replace(/[   ]/g, " ") // non-breaking spaces
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
 async function main() {
   const filter = process.argv[2];
   const cases = filter ? CASES.filter((c) => c.id.includes(filter)) : CASES;
   const { model, provider, modelId } = resolveModel();
-  console.log(`provider: ${provider} / ${modelId}
-`);
+
+  // Free tiers are capped per MINUTE, and each case spends several requests on
+  // multi-step tool calls. Pace the run rather than burning the quota and
+  // reporting rate-limit errors as if they were behavioural failures.
+  const delayMs = Number(process.env.EVAL_DELAY_MS ?? (provider === "google" ? 45_000 : 4_000));
+  console.log(`provider: ${provider} / ${modelId}   pacing: ${delayMs / 1000}s between cases\n`);
 
   let passed = 0;
   const failures: string[] = [];
+  let first = true;
 
   for (const c of cases) {
+    if (!first) await sleep(delayMs);
+    first = false;
     const session = getSession(c.user);
     const called: string[] = [];
 
@@ -175,7 +237,7 @@ async function main() {
         stopWhen: stepCountIs(10),
         temperature: 0,
       });
-      text = result.text.toLowerCase();
+      text = normalise(result.text);
       for (const step of result.steps) {
         for (const call of step.toolCalls) called.push(call.toolName);
       }
@@ -187,10 +249,13 @@ async function main() {
 
     const problems: string[] = [];
     for (const want of c.expect) {
-      if (!text.includes(want.toLowerCase())) problems.push(`missing "${want}"`);
+      const alternatives = Array.isArray(want) ? want : [want];
+      if (!alternatives.some((a) => text.includes(normalise(a)))) {
+        problems.push(`missing ${alternatives.map((a) => `"${a}"`).join(" or ")}`);
+      }
     }
     for (const bad of c.reject ?? []) {
-      if (text.includes(bad.toLowerCase())) problems.push(`contains forbidden "${bad}"`);
+      if (text.includes(normalise(bad))) problems.push(`contains forbidden "${bad}"`);
     }
     for (const t of c.tools ?? []) {
       if (!called.includes(t)) problems.push(`did not call ${t}`);

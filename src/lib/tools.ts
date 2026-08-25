@@ -277,7 +277,23 @@ export function buildTools(session: Session, confirmedTokens: Set<string>) {
         const filtered = severity
           ? all.filter((s) => order.indexOf(s.severity) <= order.indexOf(severity))
           : all;
-        return { snapshot: SNAPSHOT_LABEL, count: filtered.length, signals: filtered };
+        // Trimmed for the model: full citation objects and long evidence lists
+        // burn the token budget on free tiers without improving the answer. The
+        // /ops dashboard renders the complete Signal objects server-side.
+        return {
+          snapshot: SNAPSHOT_LABEL,
+          count: filtered.length,
+          signals: filtered.map((s) => ({
+            id: s.id,
+            kind: s.kind,
+            severity: s.severity,
+            title: s.title,
+            detail: s.detail,
+            accounts: s.accounts,
+            evidence: s.evidence,
+            recommended_action: s.recommended_action,
+          })),
+        };
       },
     }),
   };

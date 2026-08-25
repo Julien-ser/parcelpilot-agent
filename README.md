@@ -31,8 +31,8 @@ Set **one** model provider. They are tried in the order listed.
 
 | Variable | Notes |
 |---|---|
-| `GOOGLE_GENERATIVE_AI_API_KEY` | [AI Studio](https://aistudio.google.com/apikey) — free tier, no card. Recommended for a hosted demo. Model via `GOOGLE_MODEL` (default `gemini-2.5-flash`). |
-| `GROQ_API_KEY` | [Groq](https://console.groq.com/keys) — free tier, no card. Model via `GROQ_MODEL` (default `llama-3.3-70b-versatile`). |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | [AI Studio](https://aistudio.google.com/apikey) — free tier, no card. Recommended for a hosted demo. Model via `GOOGLE_MODEL` (default `gemini-3.6-flash`). |
+| `GROQ_API_KEY` | [Groq](https://console.groq.com/keys) — free tier, no card. Model via `GROQ_MODEL` (default `openai/gpt-oss-120b`). |
 | `OPENROUTER_API_KEY` | Model via `OPENROUTER_MODEL` (default `anthropic/claude-haiku-4.5`). Note: OpenRouter's free tier is capped at **50 requests/day** with no credit balance, which a deployed demo exhausts quickly. |
 | `ACTION_SIGNING_SECRET` | HMAC key for action confirmation tokens. Set it in production. |
 
@@ -49,6 +49,28 @@ npm run build     # typecheck + production build
 
 The policy tests are the interesting ones. They assert the answers this data pack was
 designed to catch people out on — see [Known traps](#known-traps-in-the-data-pack).
+
+```bash
+npm run eval      # 15 agent-level cases: tool selection, scoping, confirmation gate
+```
+
+`npm test` proves the policy *engine* is right. `npm run eval` proves the *agent* uses
+it right — that it calls `evaluate_cancellation` instead of doing the arithmetic itself,
+refuses cross-account reads, and proposes rather than executes. It needs a provider key
+and spends real quota, so it is not part of `npm test`.
+
+**Free-tier notes.** The two providers fail in different shapes, which matters when
+choosing one for a hosted demo:
+
+| Provider | Limit that bites | Practical ceiling |
+|---|---|---|
+| Groq (`openai/gpt-oss-120b`) | 200k tokens/day, 8k tokens/min | ~70–80 agent turns per day |
+| Google (`gemini-3.6-flash`) | ~20 requests/minute | fine for one user, rate-limits under a burst |
+
+One question spends 3–4 requests on multi-step tool calls, so Groq is tried first.
+Model choice is not cosmetic: on the SwiftShip webhook case, `gemini-3.6-flash` correctly
+explains the documented 20-minute confirmation lag while `gemini-2.5-flash` reports raw
+order status and never addresses the question.
 
 ---
 
