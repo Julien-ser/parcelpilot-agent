@@ -43,3 +43,5 @@ next-env.d.ts
 # but the template SHOULD be committed
 !.env.example
 data/text/
+
+.vercel

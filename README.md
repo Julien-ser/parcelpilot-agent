@@ -4,6 +4,8 @@ An AI support system for ParcelPilot, a B2B logistics platform. It serves two us
 contexts over one shared tool layer: a **customer-facing agent** scoped to a single
 account, and an **internal support/operations agent** with a proactive issue dashboard.
 
+**Live:** https://parcelpilot-agent-theta.vercel.app  ·  **Repo:** https://github.com/Julien-ser/parcelpilot-agent
+
 **The core idea:** the language model never produces a figure or a precedence decision.
 Fees, credits, SLA targets and breach states are computed by a deterministic policy
 engine that returns a rule trace naming which clause won and which it displaced. The
