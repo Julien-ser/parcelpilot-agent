@@ -154,3 +154,12 @@ export function addBusinessDays(from: number, days: number): number {
   }
   return startOfDay(cursor, CALENDAR.endHour);
 }
+
+/**
+ * Possessive form of a name. Account names in this dataset end in "s"
+ * ("LumenWorks", "Northstar Logistics"), and "LumenWorks's" reads badly in an
+ * answer a customer sees.
+ */
+export function possessive(name: string): string {
+  return name.endsWith("s") ? `${name}'` : `${name}'s`;
+}

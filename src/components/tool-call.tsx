@@ -1,23 +1,34 @@
 "use client";
 
 import { useState } from "react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  CrossCircledIcon,
+  FileTextIcon,
+  GearIcon,
+  LayersIcon,
+  LightningBoltIcon,
+} from "@radix-ui/react-icons";
 
-/** Friendly labels so the trace reads as intent, not as function names. */
+/** Labels read as intent. Nobody outside the codebase cares about function names. */
 const LABELS: Record<string, string> = {
-  search_documents: "Searching policies & agreements",
-  get_order: "Looking up order",
-  get_ticket: "Looking up ticket",
-  get_account: "Looking up account",
+  search_documents: "Searching policies and agreements",
+  get_order: "Reading order",
+  get_ticket: "Reading ticket",
+  get_account: "Reading account",
   list_records: "Listing records",
   evaluate_cancellation: "Applying cancellation rules",
-  evaluate_service_credit: "Applying service-credit rules",
-  evaluate_sla: "Checking SLA target",
+  evaluate_service_credit: "Applying service credit rules",
+  evaluate_sla: "Checking response target",
   get_ops_signals: "Scanning support activity",
   prepare_action: "Preparing action",
   execute_action: "Executing action",
 };
 
-const KIND: Record<string, "doc" | "data" | "policy" | "action"> = {
+type Kind = "doc" | "data" | "policy" | "action";
+
+const KIND: Record<string, Kind> = {
   search_documents: "doc",
   get_order: "data",
   get_ticket: "data",
@@ -31,12 +42,19 @@ const KIND: Record<string, "doc" | "data" | "policy" | "action"> = {
   execute_action: "action",
 };
 
-const KIND_COLOR = {
-  doc: "#a371f7",
-  data: "#4f9cf9",
-  policy: "#3fb950",
-  action: "#d29922",
-} as const;
+const ICONS: Record<Kind, typeof FileTextIcon> = {
+  doc: FileTextIcon,
+  data: LayersIcon,
+  policy: GearIcon,
+  action: LightningBoltIcon,
+};
+
+interface TraceStep {
+  rule: string;
+  outcome: string;
+  overrides?: string;
+  citation?: { doc_title?: string; section?: string; tier_label?: string; status?: string };
+}
 
 interface Props {
   name: string;
@@ -46,135 +64,139 @@ interface Props {
   errorText?: string;
 }
 
-interface TraceStep {
-  rule: string;
-  outcome: string;
-  overrides?: string;
-  citation?: { doc_title?: string; section?: string; tier_label?: string; status?: string };
-}
-
 export function ToolCall({ name, state, input, output, errorText }: Props) {
   const [open, setOpen] = useState(false);
   const kind = KIND[name] ?? "data";
-  const color = KIND_COLOR[kind];
+  const Icon = ICONS[kind];
   const running = state === "input-streaming" || state === "input-available";
-  const failed = state === "output-error";
 
   const out = output as
     | {
         trace?: TraceStep[];
-        summary?: string;
         error?: string;
         results?: { citation?: { doc_title?: string; section?: string } }[];
       }
     | undefined;
 
-  const denied = Boolean(out?.error);
-  const subtitle = summarise(name, input);
+  const blocked = Boolean(out?.error) || state === "output-error";
+  const subject = summarise(name, input);
+  const traceCount = out?.trace?.length ?? 0;
+  const hitCount = out?.results?.length ?? 0;
 
   return (
-    <div className="panel overflow-hidden text-[13px]">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:brightness-110 transition"
-      >
+    <div className="flex gap-3">
+      {/* Connector rail: makes a sequence of calls read as one chain of work. */}
+      <div className="flex flex-col items-center pt-[3px] shrink-0">
         <span
-          className={`w-1.5 h-1.5 rounded-full shrink-0 ${running ? "pulse" : ""}`}
-          style={{ background: failed || denied ? "var(--crit)" : color }}
-        />
-        <span className="font-medium" style={{ color }}>
-          {LABELS[name] ?? name}
+          className={`grid place-items-center w-[22px] h-[22px] rounded-md border ${running ? "breathe" : ""}`}
+          style={{
+            borderColor: blocked ? "color-mix(in srgb, var(--crit) 50%, var(--line))" : "var(--line)",
+            background: "var(--surface)",
+            color: blocked ? "var(--crit)" : running ? "var(--muted)" : "var(--accent-text)",
+          }}
+        >
+          {blocked ? <CrossCircledIcon width={12} /> : running ? <Icon width={12} /> : <CheckIcon width={13} />}
         </span>
-        {subtitle && (
-          <span className="mono text-[11px] truncate" style={{ color: "var(--muted)" }}>
-            {subtitle}
+        <span className="flex-1 w-px mt-1" style={{ background: "var(--line-soft)" }} />
+      </div>
+
+      <div className="flex-1 min-w-0 pb-1">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="press group flex items-baseline gap-2 text-left w-full"
+          aria-expanded={open}
+        >
+          <span className="text-[12.5px]" style={{ color: blocked ? "var(--crit)" : "var(--text-2)" }}>
+            {LABELS[name] ?? name}
           </span>
-        )}
-        <span className="flex-1" />
-        {denied && (
-          <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ color: "var(--crit)" }}>
-            blocked
-          </span>
-        )}
-        <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-          {running ? "running" : open ? "hide" : "details"}
-        </span>
-      </button>
+          {subject ? (
+            <span className="mono text-[11px] truncate" style={{ color: "var(--faint)" }}>
+              {subject}
+            </span>
+          ) : null}
+          <span className="flex-1" />
+          {blocked ? (
+            <span className="text-[10.5px] uppercase tracking-wide" style={{ color: "var(--crit)" }}>
+              refused
+            </span>
+          ) : traceCount || hitCount ? (
+            <span
+              className="mono text-[10.5px] tnum flex items-center gap-1"
+              style={{ color: "var(--faint)" }}
+            >
+              {traceCount ? `${traceCount} rules` : `${hitCount} sources`}
+              <ChevronDownIcon
+                className="transition-transform"
+                style={{ transform: open ? "rotate(180deg)" : "none" }}
+              />
+            </span>
+          ) : null}
+        </button>
 
-      {open && (
-        <div className="px-3 pb-3 pt-1 border-t" style={{ borderColor: "var(--border)" }}>
-          {errorText && (
-            <p className="text-xs mb-2" style={{ color: "var(--crit)" }}>
-              {errorText}
-            </p>
-          )}
+        {out?.error ? (
+          <p className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+            {out.error}
+          </p>
+        ) : null}
+        {errorText ? (
+          <p className="text-[12px] mt-1" style={{ color: "var(--crit)" }}>
+            {errorText}
+          </p>
+        ) : null}
 
-          {out?.error && (
-            <p className="text-xs mb-2" style={{ color: "var(--crit)" }}>
-              {out.error}
-            </p>
-          )}
-
-          {/* The rule trace is the point of the whole system - show it first. */}
-          {out?.trace && out.trace.length > 0 && (
-            <ol className="space-y-2 mb-3">
-              {out.trace.map((step, i) => (
-                <li key={i} className="text-xs">
-                  <div className="flex gap-2">
-                    <span className="mono shrink-0" style={{ color: "var(--muted)" }}>
-                      {i + 1}.
-                    </span>
-                    <div>
-                      <div className="font-medium" style={{ color: "var(--text)" }}>
-                        {step.rule}
-                      </div>
-                      <div style={{ color: "var(--muted)" }}>{step.outcome}</div>
-                      {step.overrides && (
-                        <div className="mt-0.5" style={{ color: "var(--warn)" }}>
-                          overrides: {step.overrides}
-                        </div>
-                      )}
-                      {step.citation?.doc_title && (
-                        <div className="mt-0.5 mono text-[10px]" style={{ color: "var(--accent)" }}>
-                          {step.citation.doc_title}
-                          {step.citation.section ? ` — ${step.citation.section}` : ""}
-                          {step.citation.tier_label ? ` (${step.citation.tier_label})` : ""}
-                        </div>
-                      )}
-                    </div>
+        {open && (
+          <div className="mt-2.5 space-y-2.5 rise">
+            {/* The rule trace is the point of the system, so it leads. */}
+            {out?.trace?.map((step, i) => (
+              <div
+                key={i}
+                className="pl-3 border-l"
+                style={{ borderColor: "var(--line)" }}
+              >
+                <div className="text-[12px]" style={{ color: "var(--text)" }}>
+                  {step.rule}
+                </div>
+                <div className="text-[12px] leading-relaxed mt-0.5" style={{ color: "var(--muted)" }}>
+                  {step.outcome}
+                </div>
+                {step.overrides ? (
+                  <div className="text-[11.5px] mt-1" style={{ color: "var(--high)" }}>
+                    displaces {step.overrides}
                   </div>
-                </li>
-              ))}
-            </ol>
-          )}
+                ) : null}
+                {step.citation?.doc_title ? (
+                  <div className="mono text-[10.5px] mt-1" style={{ color: "var(--accent-text)" }}>
+                    {step.citation.doc_title}
+                    {step.citation.section ? ` / ${step.citation.section}` : ""}
+                  </div>
+                ) : null}
+              </div>
+            ))}
 
-          {out?.results && (
-            <ul className="space-y-1 mb-2">
-              {out.results.map((r, i) => (
-                <li key={i} className="mono text-[10px]" style={{ color: "var(--accent)" }}>
-                  {r.citation?.doc_title}
-                  {r.citation?.section ? ` — ${r.citation.section}` : ""}
-                </li>
-              ))}
-            </ul>
-          )}
+            {out?.results?.map((r, i) => (
+              <div key={i} className="mono text-[10.5px] pl-3 border-l" style={{ borderColor: "var(--line)", color: "var(--accent-text)" }}>
+                {r.citation?.doc_title}
+                {r.citation?.section ? ` / ${r.citation.section}` : ""}
+              </div>
+            ))}
 
-          <details>
-            <summary
-              className="text-[11px] cursor-pointer select-none"
-              style={{ color: "var(--muted)" }}
-            >
-              Raw tool call
-            </summary>
-            <pre
-              className="mono text-[10px] mt-2 p-2 rounded overflow-x-auto max-h-72"
-              style={{ background: "var(--bg)", color: "var(--muted)" }}
-            >
-              {JSON.stringify({ input, output }, null, 2)}
-            </pre>
-          </details>
-        </div>
-      )}
+            <details>
+              <summary
+                className="text-[11px] cursor-pointer select-none list-none"
+                style={{ color: "var(--faint)" }}
+              >
+                Raw call
+              </summary>
+              <pre
+                className="mono text-[10.5px] mt-2 p-3 rounded-lg overflow-x-auto max-h-72"
+                style={{ background: "var(--bg)", border: "1px solid var(--line)", color: "var(--muted)" }}
+              >
+                {JSON.stringify({ input, output }, null, 2)}
+              </pre>
+            </details>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

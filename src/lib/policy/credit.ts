@@ -12,7 +12,7 @@
  * matched by the phrase that qualifies it, never by proximity to "INR".
  */
 import { contractChunks, findClause, toCitation, type Chunk } from "../corpus";
-import { HOUR, formatIst, humanDuration } from "../time";
+import { HOUR, formatIst, humanDuration, possessive } from "../time";
 import type { Account, Order } from "../db";
 import { decision, parseInr, type Decision, type RuleStep } from "./types";
 
@@ -123,7 +123,7 @@ export function evaluateCredit(
   if (contract.thresholdHours !== null && contractCitation) {
     trace.push({
       rule: "signed agreement - failed-pickup credits",
-      outcome: `${account.account_name}'s agreement sets the delay threshold at ${contract.thresholdHours} hours past the pickup window.`,
+      outcome: `${possessive(account.account_name)} agreement sets the delay threshold at ${contract.thresholdHours} hours past the pickup window.`,
       citation: contractCitation,
       overrides: `SOP v4 s2 default threshold of ${sop.thresholdHours} hours`,
     });
@@ -207,7 +207,7 @@ export function evaluateCredit(
         : null;
     trace.push({
       rule: "signed agreement - fixed credit amount",
-      outcome: `${account.account_name}'s agreement sets a fixed credit of INR ${amount}.`,
+      outcome: `${possessive(account.account_name)} agreement sets a fixed credit of INR ${amount}.`,
       citation: contractCitation,
       overrides:
         wouldHaveBeen !== null
@@ -230,7 +230,7 @@ export function evaluateCredit(
   if (contract.monthlyCap !== null && contractCitation) {
     trace.push({
       rule: "signed agreement - monthly aggregate cap",
-      outcome: `${account.account_name}'s credits are capped at INR ${contract.monthlyCap} per month in aggregate. This single credit is within that ceiling, but the month-to-date total is not tracked in the supplied dataset and should be checked before issuing.`,
+      outcome: `${possessive(account.account_name)} credits are capped at INR ${contract.monthlyCap} per month in aggregate. This single credit is within that ceiling, but the month-to-date total is not tracked in the supplied dataset and should be checked before issuing.`,
       citation: contractCitation,
     });
   }
@@ -259,7 +259,7 @@ export function evaluateCredit(
         ? [
             {
               kind: "contract_overrides_policy",
-              summary: `${account.account_name}'s agreement replaces the SOP's default failed-pickup credit terms.`,
+              summary: `${possessive(account.account_name)} agreement replaces the SOP's default failed-pickup credit terms.`,
               winner: contractCitation,
               loser: sopCitation,
             },

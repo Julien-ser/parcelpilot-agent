@@ -12,7 +12,7 @@
  * has not started at all.
  */
 import { toCitation, findClause } from "../corpus";
-import { formatIst, humanDuration, isWeekend, nextWorkingInstant } from "../time";
+import { formatIst, humanDuration, isWeekend, nextWorkingInstant, possessive } from "../time";
 import type { Account, Ticket } from "../db";
 import { decision, type Decision, type RuleStep } from "./types";
 import {
@@ -147,7 +147,7 @@ export function evaluateSla(
   if (target.source === "contract") {
     trace.push({
       rule: "signed agreement - support terms",
-      outcome: `${account.account_name}'s agreement sets the ${severity} first-response target at ${describeTarget(target)}.`,
+      outcome: `${possessive(account.account_name)} agreement sets the ${severity} first-response target at ${describeTarget(target)}.`,
       citation: target.citation,
       overrides: displaced
         ? `Support Policy v3 default for ${account.plan} of ${describeTarget(displaced)}`
@@ -195,7 +195,7 @@ export function evaluateSla(
     trace.push({
       rule: weekendClause.yes ? "signed agreement - coverage window" : "business calendar",
       outcome: weekendClause.yes
-        ? `${account.account_name}'s agreement excludes weekend and after-hours coverage, and the snapshot (${formatIst(nowMs)}) is a Sunday, so the response clock is paused until ${formatIst(resumesAt)}.`
+        ? `${possessive(account.account_name)} agreement excludes weekend and after-hours coverage, and the snapshot (${formatIst(nowMs)}) is a Sunday, so the response clock is paused until ${formatIst(resumesAt)}.`
         : `The target is measured in business time and the snapshot (${formatIst(nowMs)}) falls on a weekend, so the clock is paused until ${formatIst(resumesAt)}.`,
       citation: weekendClause.citation,
     });
@@ -247,7 +247,7 @@ export function evaluateSla(
         ? [
             {
               kind: "contract_overrides_policy",
-              summary: `${account.account_name}'s agreement sets ${describeTarget(target)} for ${severity}, replacing the ${account.plan} default of ${describeTarget(displaced)}.`,
+              summary: `${possessive(account.account_name)} agreement sets ${describeTarget(target)} for ${severity}, replacing the ${account.plan} default of ${describeTarget(displaced)}.`,
               winner: target.citation,
               loser: displaced.citation,
             },

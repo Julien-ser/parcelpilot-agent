@@ -33,8 +33,8 @@ Set **one** model provider. They are tried in the order listed.
 
 | Variable | Notes |
 |---|---|
-| `GOOGLE_GENERATIVE_AI_API_KEY` | [AI Studio](https://aistudio.google.com/apikey) — free tier, no card. Recommended for a hosted demo. Model via `GOOGLE_MODEL` (default `gemini-3.6-flash`). |
-| `GROQ_API_KEY` | [Groq](https://console.groq.com/keys) — free tier, no card. Model via `GROQ_MODEL` (default `openai/gpt-oss-120b`). |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | [AI Studio](https://aistudio.google.com/apikey), free tier, no card. Recommended for a hosted demo. Model via `GOOGLE_MODEL` (default `gemini-3.6-flash`). |
+| `GROQ_API_KEY` | [Groq](https://console.groq.com/keys), free tier, no card. Model via `GROQ_MODEL` (default `openai/gpt-oss-120b`). |
 | `OPENROUTER_API_KEY` | Model via `OPENROUTER_MODEL` (default `anthropic/claude-haiku-4.5`). Note: OpenRouter's free tier is capped at **50 requests/day** with no credit balance, which a deployed demo exhausts quickly. |
 | `ACTION_SIGNING_SECRET` | HMAC key for action confirmation tokens. Set it in production. |
 
@@ -50,14 +50,14 @@ npm run build     # typecheck + production build
 ```
 
 The policy tests are the interesting ones. They assert the answers this data pack was
-designed to catch people out on — see [Known traps](#known-traps-in-the-data-pack).
+designed to catch people out on. See [Known traps](#known-traps-in-the-data-pack).
 
 ```bash
 npm run eval      # 15 agent-level cases: tool selection, scoping, confirmation gate
 ```
 
 `npm test` proves the policy *engine* is right. `npm run eval` proves the *agent* uses
-it right — that it calls `evaluate_cancellation` instead of doing the arithmetic itself,
+it right. That it calls `evaluate_cancellation` instead of doing the arithmetic itself,
 refuses cross-account reads, and proposes rather than executes. It needs a provider key
 and spends real quota, so it is not part of `npm test`.
 
@@ -66,10 +66,10 @@ choosing one for a hosted demo:
 
 | Provider | Limit that bites | Practical ceiling |
 |---|---|---|
-| Groq (`openai/gpt-oss-120b`) | 200k tokens/day, 8k tokens/min | ~70–80 agent turns per day |
+| Groq (`openai/gpt-oss-120b`) | 200k tokens/day, 8k tokens/min | ~70-80 agent turns per day |
 | Google (`gemini-3.6-flash`) | ~20 requests/minute | fine for one user, rate-limits under a burst |
 
-One question spends 3–4 requests on multi-step tool calls, so Groq is tried first.
+One question spends 3-4 requests on multi-step tool calls, so Groq is tried first.
 Model choice is not cosmetic: on the SwiftShip webhook case, `gemini-3.6-flash` correctly
 explains the documented 20-minute confirmation lag while `gemini-2.5-flash` reports raw
 order status and never addresses the question.
@@ -82,7 +82,7 @@ The customer-facing chat, with the active scope shown under the header:
 
 ![Chat interface](docs/chat.png)
 
-The internal operations dashboard — every signal computed deterministically, with its
+The internal operations dashboard. Every signal computed deterministically, with its
 own evidence and citations:
 
 ![Operations dashboard](docs/ops-dashboard.png)
@@ -98,11 +98,11 @@ scope is enforced in the data layer, not requested by the model.
 
 | Identity | Role | Scope |
 |---|---|---|
-| Ravi Menon — Northstar | customer | ACCT-001 only, internal fields stripped |
-| Sara Iyer — LumenWorks | customer | ACCT-002 only |
-| Dev Shah — Beacon Retail | customer | ACCT-003 only |
-| Maya — ParcelPilot Support | support agent | all accounts, cannot approve large credits |
-| Priya Mehta — Support Manager | manager | all accounts, may approve credits above the SOP threshold |
+| Ravi Menon, Northstar | customer | ACCT-001 only, internal fields stripped |
+| Sara Iyer, LumenWorks | customer | ACCT-002 only |
+| Dev Shah, Beacon Retail | customer | ACCT-003 only |
+| Maya, ParcelPilot Support | support agent | all accounts, cannot approve large credits |
+| Priya Mehta, Support Manager | manager | all accounts, may approve credits above the SOP threshold |
 
 ### Tools
 
@@ -112,7 +112,7 @@ scope is enforced in the data layer, not requested by the model.
 | `get_order` / `get_ticket` / `get_account` / `list_records` | structured | Scoped record lookup |
 | `evaluate_cancellation` | calculation | Cancellability + fee, with precedence trace |
 | `evaluate_service_credit` | calculation | Credit eligibility + amount, real or hypothetical |
-| `evaluate_sla` | calculation | Severity, target, due time, breach — on the correct clock |
+| `evaluate_sla` | calculation | Severity, target, due time, breach, on the correct clock |
 | `get_ops_signals` | structured | Internal only: ranked proactive signals |
 | `prepare_action` | state change | Proposes an action, changes nothing |
 | `execute_action` | state change | Executes, only after the user confirms |
@@ -134,14 +134,14 @@ each covered by a test:
 
 | # | Trap | Naive answer | Correct answer |
 |---|---|---|---|
-| 1 | **ORD-1001** cancelled 120 min after booking | INR 250 fee (SOP: fee after 30 min) | **No fee** — Northstar's agreement waives it regardless of elapsed time |
-| 2 | **TKT-450** closed with "INR 250 fee applied" | Repeat it as precedent | It was **wrong** — flagged as incorrect historical guidance |
-| 3 | **TKT-451** closed with "Growth supports 3,000 rows" | Repeat it | Wrong — the guide says **5,000**; 3,000 is the KI-208 *workaround* |
-| 4 | **ORD-2002** credit amount | INR 240 (SOP: 10% of 2,400) | **INR 300** — LumenWorks' fixed amount at a 4h threshold |
+| 1 | **ORD-1001** cancelled 120 min after booking | INR 250 fee (SOP: fee after 30 min) | **No fee**, Northstar's agreement waives it regardless of elapsed time |
+| 2 | **TKT-450** closed with "INR 250 fee applied" | Repeat it as precedent | It was **wrong**, flagged as incorrect historical guidance |
+| 3 | **TKT-451** closed with "Growth supports 3,000 rows" | Repeat it | Wrong, the guide says **5,000**; 3,000 is the KI-208 *workaround* |
+| 4 | **ORD-2002** credit amount | INR 240 (SOP: 10% of 2,400) | **INR 300**, LumenWorks' fixed amount at a 4h threshold |
 | 5 | Northstar's "INR 5,000" | Treat as the credit amount | It is a **monthly aggregate cap**, not a credit |
-| 6 | **TKT-501** Northstar P1 | Not breached (v2 says 1 hour) | **Breached by 15 min** — v3 + contract give a 15-min 24x7 target |
+| 6 | **TKT-501** Northstar P1 | Not breached (v2 says 1 hour) | **Breached by 15 min**, v3 + contract give a 15-min 24x7 target |
 | 7 | **TKT-505** API key exposure | A support question | **P1** under v3, breached by 2h, and nobody has flagged it |
-| 8 | **TKT-504** SwiftShip still BOOKED | Tell the customer pickup failed | It is **KI-211** webhook lag (up to 20 min) — do not say pickup failed |
+| 8 | **TKT-504** SwiftShip still BOOKED | Tell the customer pickup failed | It is **KI-211** webhook lag (up to 20 min), do not say pickup failed |
 | 9 | **Snapshot is a Sunday** | Run every SLA clock at wall time | LumenWorks has *no weekend coverage*; their business-hours clock has not started |
 | 10 | Policy v2 in the corpus | Retrieve and cite it | **Excluded** from retrieval unless explicitly requested, and warned |
 
@@ -193,7 +193,7 @@ judge this on: **[PRODUCT.md](./PRODUCT.md)**
 The brief invites assumptions. These are the ones that change answers:
 
 - **"Now" is the dataset snapshot**, 2026-08-16 11:00 Asia/Kolkata, never the real clock.
-- **Business hours are Mon–Fri 09:00–18:00 IST.** Public holidays are not modelled.
+- **Business hours are Mon to Fri 09:00-18:00 IST.** Public holidays are not modelled.
 - **A target without the word "business" is wall-clock.** The documents write
   "business hours" whenever they mean it, so the omission carries meaning.
 - **"N business days" means end of the Nth working day**, which is how support teams quote it.
@@ -208,7 +208,7 @@ The brief invites assumptions. These are the ones that change answers:
 Built with **Claude Code** (Claude Opus), used heavily and deliberately.
 
 How it was used: I gave it the data pack and the brief, and worked with it
-interactively — it read every source document and workbook row up front, enumerated the
+interactively. It read every source document and workbook row up front, enumerated the
 planted conflicts, and I directed the architecture from there (deterministic engine over
 model arithmetic, precedence as a data-layer property, access control at the tool
 boundary rather than in the prompt). It wrote the ingestion pipeline, the policy engine,

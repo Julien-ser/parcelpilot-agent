@@ -1,11 +1,13 @@
 "use client";
 
+import { CheckCircledIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons";
+
 /**
  * The confirmation gate, rendered from a prepare_action result.
  *
- * Clicking Confirm is what adds the action token to the set the API route
- * trusts. Until that happens, execute_action is refused server-side - so this
- * card is a real gate, not a courtesy prompt.
+ * Clicking Confirm is what puts the action token into the set the API route
+ * trusts. Until then execute_action is refused server side, so this is a real
+ * gate rather than a courtesy prompt.
  */
 interface Props {
   data: {
@@ -30,7 +32,7 @@ interface Props {
 const TITLES: Record<string, string> = {
   create_escalation: "Create escalation",
   update_ticket: "Update ticket",
-  create_followup_task: "Create follow-up task",
+  create_followup_task: "Create follow up task",
   issue_service_credit: "Issue service credit",
 };
 
@@ -38,90 +40,113 @@ export function ConfirmCard({ data, confirmed, cancelled, disabled, onConfirm, o
   const { action, warnings } = data;
   const settled = confirmed || cancelled;
 
+  const rail = confirmed ? "var(--accent)" : cancelled ? "var(--faint)" : "var(--med)";
+
   return (
     <div
-      className="panel overflow-hidden"
-      style={{ borderColor: confirmed ? "var(--ok)" : cancelled ? "var(--border)" : "var(--warn)" }}
+      className="rise rounded-xl overflow-hidden flex"
+      style={{ border: "1px solid var(--line)", background: "var(--surface)" }}
     >
-      <div
-        className="px-4 py-2.5 flex items-center gap-2 border-b"
-        style={{
-          borderColor: "var(--border)",
-          background: "var(--panel-2)",
-        }}
-      >
-        <span
-          className="w-1.5 h-1.5 rounded-full"
-          style={{ background: confirmed ? "var(--ok)" : cancelled ? "var(--muted)" : "var(--warn)" }}
-        />
-        <span className="text-sm font-semibold">
-          {TITLES[action.type] ?? action.type} — {action.subject_id}
-        </span>
-        <span className="flex-1" />
-        <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-          {confirmed ? "confirmed" : cancelled ? "cancelled" : "needs your approval"}
-        </span>
-      </div>
+      <span className="w-[3px] shrink-0" style={{ background: rail }} />
 
-      <div className="px-4 py-3 space-y-3">
-        <p className="text-sm">{action.summary}</p>
-
-        <div className="rounded-lg p-3" style={{ background: "var(--bg)" }}>
-          <div className="text-[11px] mb-1.5 uppercase tracking-wide" style={{ color: "var(--muted)" }}>
-            Exactly what will change
-          </div>
-          <dl className="space-y-1">
-            {Object.entries(action.changes).map(([k, v]) => (
-              <div key={k} className="flex gap-2 text-xs">
-                <dt className="mono" style={{ color: "var(--muted)" }}>
-                  {k}
-                </dt>
-                <dd className="mono" style={{ color: "var(--text)" }}>
-                  {v === null ? "—" : String(v)}
-                </dd>
-              </div>
-            ))}
-          </dl>
+      <div className="flex-1 min-w-0">
+        <div
+          className="px-4 py-2.5 flex items-center gap-2 border-b"
+          style={{ borderColor: "var(--line)" }}
+        >
+          <span className="text-[13px]" style={{ fontWeight: 600 }}>
+            {TITLES[action.type] ?? action.type}
+          </span>
+          <span className="mono text-[11px]" style={{ color: "var(--faint)" }}>
+            {action.subject_id}
+          </span>
+          <span className="flex-1" />
+          <span
+            className="text-[10.5px] uppercase tracking-wider"
+            style={{ color: confirmed ? "var(--accent-text)" : cancelled ? "var(--faint)" : "var(--med)" }}
+          >
+            {confirmed ? "executed" : cancelled ? "cancelled" : "awaiting approval"}
+          </span>
         </div>
 
-        <div className="text-xs" style={{ color: "var(--muted)" }}>
-          <span style={{ color: "var(--text)" }}>Why: </span>
-          {action.justification}
-        </div>
-
-        {warnings.map((w) => (
-          <div key={w} className="text-xs flex gap-1.5" style={{ color: "var(--warn)" }}>
-            <span>!</span>
-            <span>{w}</span>
-          </div>
-        ))}
-
-        {!settled && (
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={onConfirm}
-              disabled={disabled}
-              className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 transition"
-              style={{ background: "var(--ok)", color: "#06111f" }}
-            >
-              Confirm
-            </button>
-            <button
-              onClick={onCancel}
-              disabled={disabled}
-              className="px-4 py-2 rounded-lg text-sm border disabled:opacity-40 transition"
-              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-
-        {cancelled && (
-          <p className="text-xs" style={{ color: "var(--muted)" }}>
-            Cancelled. Nothing was changed.
+        <div className="px-4 py-3.5 space-y-3.5">
+          <p className="text-[13.5px]" style={{ color: "var(--text-2)" }}>
+            {action.summary}
           </p>
-        )}
+
+          <div>
+            <div
+              className="text-[10.5px] uppercase tracking-wider mb-1.5"
+              style={{ color: "var(--faint)" }}
+            >
+              Exactly what changes
+            </div>
+            <dl className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+              {Object.entries(action.changes).map(([k, v]) => (
+                <div key={k} className="flex items-baseline gap-3 py-1.5">
+                  <dt className="mono text-[11.5px] w-[46%] shrink-0" style={{ color: "var(--muted)" }}>
+                    {k}
+                  </dt>
+                  <dd className="mono text-[11.5px] tnum" style={{ color: "var(--text)" }}>
+                    {v === null ? "not set" : String(v)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          <p className="text-[12.5px] leading-relaxed" style={{ color: "var(--muted)" }}>
+            <span style={{ color: "var(--text-2)" }}>Why: </span>
+            {action.justification}
+          </p>
+
+          {warnings.map((w) => (
+            <div
+              key={w}
+              className="flex items-start gap-2 text-[12px] rounded-lg px-3 py-2"
+              style={{
+                color: "var(--med)",
+                background: "color-mix(in srgb, var(--med) 8%, transparent)",
+              }}
+            >
+              <ExclamationTriangleIcon className="mt-[2px] shrink-0" />
+              <span>{w}</span>
+            </div>
+          ))}
+
+          {!settled && (
+            <div className="flex gap-2 pt-0.5">
+              <button
+                onClick={onConfirm}
+                disabled={disabled}
+                className="press px-4 py-2 rounded-lg text-[13px] disabled:opacity-35"
+                style={{ background: "var(--accent)", color: "#0b1a14", fontWeight: 600 }}
+              >
+                Confirm
+              </button>
+              <button
+                onClick={onCancel}
+                disabled={disabled}
+                className="press px-4 py-2 rounded-lg text-[13px] border disabled:opacity-35"
+                style={{ borderColor: "var(--line)", color: "var(--text-2)" }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {confirmed && (
+            <div className="flex items-center gap-1.5 text-[12px]" style={{ color: "var(--accent-text)" }}>
+              <CheckCircledIcon />
+              Approved by you. The action tool accepted the signed token.
+            </div>
+          )}
+          {cancelled && (
+            <p className="text-[12px]" style={{ color: "var(--faint)" }}>
+              Cancelled. Nothing was changed.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -10,7 +10,7 @@
  * answer without a deploy.
  */
 import { contractChunks, findClause, toCitation, type Chunk } from "../corpus";
-import { MINUTE, formatIst, humanDuration } from "../time";
+import { MINUTE, formatIst, humanDuration, possessive } from "../time";
 import type { Account, Order } from "../db";
 import { decision, parseInr, type Decision, type RuleStep } from "./types";
 
@@ -151,7 +151,7 @@ export function evaluateCancellation(
   if (waived && contractCitation) {
     trace.push({
       rule: "signed agreement - cancellation terms",
-      outcome: `${account.account_name}'s agreement waives the cancellation fee for any BOOKED shipment before pickup, regardless of elapsed time.`,
+      outcome: `${possessive(account.account_name)} agreement waives the cancellation fee for any BOOKED shipment before pickup, regardless of elapsed time.`,
       citation: contractCitation,
       overrides: `SOP v4 s1 default fee of INR ${sopFee ?? "?"} after ${freeWindowMinutes ?? "?"} minutes`,
     });
@@ -168,7 +168,7 @@ export function evaluateCancellation(
       conflicts: [
         {
           kind: "contract_overrides_policy",
-          summary: `The SOP default would charge INR ${sopFee ?? "?"} after ${freeWindowMinutes ?? "?"} minutes, but ${account.account_name}'s signed agreement waives it.`,
+          summary: `The SOP default would charge INR ${sopFee ?? "?"} after ${freeWindowMinutes ?? "?"} minutes, but ${possessive(account.account_name)} signed agreement waives it.`,
           winner: contractCitation,
           loser: sopCitation,
         },
@@ -176,14 +176,14 @@ export function evaluateCancellation(
       summary:
         `${order.order_id} can be cancelled with no cancellation fee` +
         (elapsedMinutes !== null ? ` even though it was booked ${humanDuration(elapsedMs!)} ago` : "") +
-        `, because ${account.account_name}'s agreement waives the fee before pickup.`,
+        `, because ${possessive(account.account_name)} agreement waives the fee before pickup.`,
     });
   }
 
   if (contractClause && contractCitation) {
     trace.push({
       rule: "signed agreement - cancellation terms",
-      outcome: `${account.account_name}'s agreement does not waive the cancellation fee; the current SOP applies.`,
+      outcome: `${possessive(account.account_name)} agreement does not waive the cancellation fee; the current SOP applies.`,
       citation: contractCitation,
     });
   }

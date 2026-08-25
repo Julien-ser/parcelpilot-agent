@@ -1,22 +1,37 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+/*
+ * Typography: Satoshi for the interface, JetBrains Mono for every identifier,
+ * timestamp and figure. Satoshi is a grotesque with enough character to not read
+ * as a default, and it stays legible at the small sizes an operations console
+ * lives at. Serifs are deliberately absent; this is software, not an essay.
+ */
+const mono = JetBrains_Mono({
+  variable: "--font-mono",
+  subsets: ["latin"],
+  weight: ["400", "500"],
+});
 
 export const metadata: Metadata = {
-  title: "ParcelPilot Support Agent",
+  title: "ParcelPilot Support Console",
   description:
-    "AI support agent for ParcelPilot: policy-aware answers with source precedence, scoped data access and confirmed actions.",
+    "Policy-aware support agent for ParcelPilot: source precedence, account-scoped data access, and confirmed actions.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col" style={{ fontFamily: "var(--font-geist-sans), system-ui, sans-serif" }}>
-        {children}
-      </body>
+    <html lang="en" className={`${mono.variable} h-full antialiased`}>
+      <head>
+        <link rel="preconnect" href="https://api.fontshare.com" />
+        <link
+          href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&display=swap"
+          rel="stylesheet"
+        />
+        <style>{`:root{--font-ui:"Satoshi","Segoe UI",system-ui,-apple-system,sans-serif;}`}</style>
+      </head>
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }

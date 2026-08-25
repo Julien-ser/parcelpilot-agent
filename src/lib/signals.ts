@@ -11,7 +11,7 @@
  */
 import { ORDERS, TICKETS, SNAPSHOT_MS, accountById, type Ticket } from "./db";
 import { productChunks, findClause, toCitation, type Citation } from "./corpus";
-import { HOUR, formatIst, humanDuration } from "./time";
+import { HOUR, formatIst, humanDuration, possessive } from "./time";
 import { evaluateSla } from "./policy/sla";
 import { evaluateCredit, creditInputsFromOrder } from "./policy/credit";
 import { contractWaivesFee } from "./policy/cancellation";
@@ -248,7 +248,7 @@ function detectSilentFailures(): Signal[] {
       severity: "high",
       title: `${o.order_id} qualifies for a service credit but no ticket has been raised`,
       detail:
-        `${account.account_name}'s pickup is ${d.determination.delay_hours?.toFixed(1)}h past the window ` +
+        `${possessive(account.account_name)} pickup is ${d.determination.delay_hours?.toFixed(1)}h past the window ` +
         `with carrier fault accepted. ${d.summary} The customer has not contacted support about it.`,
       evidence: [o.order_id, account.account_id],
       accounts: [account.account_id],
@@ -322,9 +322,9 @@ function detectIncorrectHistory(): Signal[] {
           id: `hist-${t.ticket_id}`,
           kind: "incorrect_history",
           severity: "high",
-          title: `${t.ticket_id} recorded an answer that contradicts ${account.account_name}'s agreement`,
+          title: `${t.ticket_id} recorded an answer that contradicts ${possessive(account.account_name)} agreement`,
           detail:
-            `The recorded resolution says: "${resolution}" - but ${account.account_name}'s signed agreement ` +
+            `The recorded resolution says: "${resolution}" - but ${possessive(account.account_name)} signed agreement ` +
             `waives the cancellation fee for any BOOKED shipment before pickup, regardless of elapsed time. ` +
             `The customer was very likely charged, or told they would be, in error.`,
           evidence: [t.ticket_id, account.account_id],
