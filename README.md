@@ -69,7 +69,11 @@ choosing one for a hosted demo:
 | Groq (`openai/gpt-oss-120b`) | 200k tokens/day, 8k tokens/min | ~70-80 agent turns per day |
 | Google (`gemini-3.6-flash`) | ~20 requests/minute | fine for one user, rate-limits under a burst |
 
-One question spends 3-4 requests on multi-step tool calls, so Groq is tried first.
+One question spends 3-4 requests on multi-step tool calls, so Groq is tried first and the
+others stand by. **Configure more than one key and the app fails over automatically**: the
+chain is wired at the model level, so `streamText` stepping from a tool call to the final
+answer can cross providers mid-answer without losing the work already done. Set
+`MODEL_PROVIDER` to put a specific provider at the front; the rest stay as backup.
 Model choice is not cosmetic: on the SwiftShip webhook case, `gemini-3.6-flash` correctly
 explains the documented 20-minute confirmation lag while `gemini-2.5-flash` reports raw
 order status and never addresses the question.

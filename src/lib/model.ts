@@ -1,99 +1,203 @@
 /**
- * Model provider resolution.
+ * Model provider resolution, with failover.
  *
  * The agent's behaviour lives in the tools and the policy engine, not in any one
- * vendor, so the provider is a configuration choice. Whichever API key is present
- * wins, in the order below.
+ * vendor, so the provider is configuration. Whichever API keys are present are
+ * assembled into an ordered chain.
  *
- * This exists for a practical reason: hosting a demo on a free tier. OpenRouter's
- * free tier is capped at 50 requests/day for accounts with no credit balance, and
- * a single conversation with multi-step tool calling spends several. Google AI
- * Studio and Groq both offer free tiers with daily limits high enough to survive
- * people actually using the deployed app.
+ * Failover exists because free tiers run out in different, uncorrelated ways:
+ * Groq caps tokens per day, Google caps requests per minute. A single question
+ * spends three or four requests on multi-step tool calls, so a demo leaning on
+ * one provider stalls partway through an answer. The chain is wired at the model
+ * level rather than the request level, which matters: `streamText` issues one
+ * call per step, so a provider that runs out between the tool call and the final
+ * answer is stepped over without losing the work already done.
  */
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createGroq } from "@ai-sdk/groq";
-import type { LanguageModel } from "ai";
+import { wrapLanguageModel, type LanguageModel } from "ai";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
+
+export type ProviderName = "google" | "groq" | "openrouter";
 
 export interface ResolvedModel {
   model: LanguageModel;
-  provider: "google" | "groq" | "openrouter";
+  provider: ProviderName;
   modelId: string;
+  /** Providers standing by as failover, in order. */
+  fallbacks: string[];
 }
 
 export class NoProviderError extends Error {
   constructor() {
     super(
-      "No model provider configured. Set one of GOOGLE_GENERATIVE_AI_API_KEY, " +
-        "GROQ_API_KEY or OPENROUTER_API_KEY in .env.local (or in the Vercel project).",
+      "No model provider configured. Set one of GROQ_API_KEY, " +
+        "GOOGLE_GENERATIVE_AI_API_KEY or OPENROUTER_API_KEY in .env.local (or in the Vercel project).",
     );
   }
 }
 
 /**
- * Defaults are chosen for tool-calling reliability on a free tier, not for
- * benchmark scores. Override per provider with *_MODEL.
+ * Defaults chosen for tool-calling reliability on a free tier, not for benchmark
+ * scores. Override with GROQ_MODEL / GOOGLE_MODEL / OPENROUTER_MODEL.
  */
-const DEFAULTS = {
-  google: "gemini-3.6-flash",
+const DEFAULTS: Record<ProviderName, string> = {
   groq: "openai/gpt-oss-120b",
+  google: "gemini-3.6-flash",
   openrouter: "anthropic/claude-haiku-4.5",
-} as const;
+};
 
-export function resolveModel(): ResolvedModel {
-  // MODEL_PROVIDER forces one provider when several keys are configured, which
-  // is how the eval suite compares them.
-  const forced = process.env.MODEL_PROVIDER?.toLowerCase();
+/**
+ * Groq leads: it allows roughly 30 requests per minute against Google's 20, and
+ * per-minute limits are what someone clicking through a demo actually hits.
+ * Google's daily headroom then covers the case where Groq's token budget is gone.
+ */
+const ORDER: ProviderName[] = ["groq", "google", "openrouter"];
 
-  // Groq is tried first for a hosted demo. The free tiers fail in different
-  // shapes: Groq allows ~30 requests/minute but caps tokens per day, while
-  // Google allows only 5 requests/minute. One question here spends 3-4 requests
-  // on multi-step tool calls, so two questions in a minute would rate-limit on
-  // Google while Groq absorbs it.
-  const groqKey = process.env.GROQ_API_KEY;
-  if (groqKey && (!forced || forced === "groq")) {
-    const modelId = process.env.GROQ_MODEL ?? DEFAULTS.groq;
-    return {
-      model: createGroq({ apiKey: groqKey })(modelId),
-      provider: "groq",
-      modelId,
-    };
-  }
-
-  const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (googleKey && (!forced || forced === "google")) {
-    const modelId = process.env.GOOGLE_MODEL ?? DEFAULTS.google;
-    return {
-      model: createGoogleGenerativeAI({ apiKey: googleKey })(modelId),
-      provider: "google",
-      modelId,
-    };
-  }
-
-  const openrouterKey = process.env.OPENROUTER_API_KEY;
-  if (openrouterKey && (!forced || forced === "openrouter")) {
-    const modelId = process.env.OPENROUTER_MODEL ?? DEFAULTS.openrouter;
-    return {
-      model: createOpenRouter({ apiKey: openrouterKey }).chat(modelId),
-      provider: "openrouter",
-      modelId,
-    };
-  }
-
-  throw new NoProviderError();
+interface Candidate {
+  provider: ProviderName;
+  modelId: string;
+  model: LanguageModelV4;
 }
 
-/** Turn an upstream failure into something a user can act on. */
+function build(provider: ProviderName): Candidate | null {
+  switch (provider) {
+    case "groq": {
+      const key = process.env.GROQ_API_KEY;
+      if (!key) return null;
+      const modelId = process.env.GROQ_MODEL ?? DEFAULTS.groq;
+      return { provider, modelId, model: createGroq({ apiKey: key })(modelId) as LanguageModelV4 };
+    }
+    case "google": {
+      const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+      if (!key) return null;
+      const modelId = process.env.GOOGLE_MODEL ?? DEFAULTS.google;
+      return {
+        provider,
+        modelId,
+        model: createGoogleGenerativeAI({ apiKey: key })(modelId) as LanguageModelV4,
+      };
+    }
+    case "openrouter": {
+      const key = process.env.OPENROUTER_API_KEY;
+      if (!key) return null;
+      const modelId = process.env.OPENROUTER_MODEL ?? DEFAULTS.openrouter;
+      return {
+        provider,
+        modelId,
+        model: createOpenRouter({ apiKey: key }).chat(modelId) as unknown as LanguageModelV4,
+      };
+    }
+  }
+}
+
+/**
+ * Only step over a provider for a failure another provider could plausibly
+ * survive. A malformed request fails identically everywhere, and retrying it
+ * across the chain just burns three quotas and buries the real error.
+ */
+export function isExhaustion(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  const status =
+    (err as { statusCode?: number })?.statusCode ?? (err as { status?: number })?.status;
+  if (status === 429 || status === 402 || (typeof status === "number" && status >= 500)) return true;
+  return /429|402|rate.?limit|quota|RESOURCE_EXHAUSTED|insufficient credits|overloaded|capacity|temporarily unavailable|ECONNRESET|ETIMEDOUT/i.test(
+    message,
+  );
+}
+
+export function resolveModel(): ResolvedModel {
+  const forced = process.env.MODEL_PROVIDER?.toLowerCase() as ProviderName | undefined;
+
+  const available = ORDER.map(build).filter((c): c is Candidate => c !== null);
+  if (available.length === 0) throw new NoProviderError();
+
+  // A forced provider leads the chain but does not remove the safety net.
+  const chain = forced
+    ? [
+        ...available.filter((c) => c.provider === forced),
+        ...available.filter((c) => c.provider !== forced),
+      ]
+    : available;
+
+  const [primary, ...rest] = chain;
+
+  return {
+    model: withFallback(primary.model, rest.map((c) => c.model)) as LanguageModel,
+    provider: primary.provider,
+    modelId: primary.modelId,
+    fallbacks: rest.map((c) => `${c.provider}/${c.modelId}`),
+  };
+}
+
+/**
+ * Wrap a model so that quota failures step to the next model in the list.
+ *
+ * Exported so the behaviour can be tested with fake models. Verifying this
+ * against real providers would mean deliberately exhausting a quota, which is
+ * both slow and the resource we are trying to conserve.
+ */
+export function withFallback(
+  primary: LanguageModelV4,
+  rest: LanguageModelV4[],
+): LanguageModelV4 {
+  if (rest.length === 0) return primary;
+
+  return wrapLanguageModel({
+    model: primary,
+    middleware: {
+      async wrapStream({ doStream, params }) {
+        try {
+          return await doStream();
+        } catch (err) {
+          if (!isExhaustion(err)) throw err;
+          return await tryRest(rest, (m) => m.doStream(params), err);
+        }
+      },
+      async wrapGenerate({ doGenerate, params }) {
+        try {
+          return await doGenerate();
+        } catch (err) {
+          if (!isExhaustion(err)) throw err;
+          return await tryRest(rest, (m) => m.doGenerate(params), err);
+        }
+      },
+    },
+  }) as LanguageModelV4;
+}
+
+async function tryRest<T>(
+  rest: LanguageModelV4[],
+  call: (m: LanguageModelV4) => PromiseLike<T>,
+  firstError: unknown,
+): Promise<T> {
+  let last = firstError;
+  for (const model of rest) {
+    console.warn(
+      `[model] failing over to ${model.provider}/${model.modelId}, previous provider said:`,
+      last instanceof Error ? last.message.slice(0, 140) : String(last).slice(0, 140),
+    );
+    try {
+      return await call(model);
+    } catch (err) {
+      last = err;
+      if (!isExhaustion(err)) throw err;
+    }
+  }
+  throw last;
+}
+
+/** Turn an upstream failure into something a person can act on. */
 export function explainModelError(message: string, provider?: string): string {
   if (/402|insufficient credits/i.test(message)) {
-    return "The model provider reports no credit balance. Add credits, or switch provider by setting GOOGLE_GENERATIVE_AI_API_KEY or GROQ_API_KEY.";
+    return "Every configured model provider is out of credit or quota. Add credits, or set another provider key.";
   }
   if (/429|rate limit|quota|RESOURCE_EXHAUSTED/i.test(message)) {
-    return `${provider ?? "The model provider"} rate limit reached. Free tiers are capped per minute and per day; wait a moment and retry, or configure a different provider.`;
+    return "Every configured model provider is rate limited right now. Free tiers cap requests per minute and tokens per day. Wait a moment and try again.";
   }
   if (/401|403|API key|unauthenticated|PERMISSION_DENIED/i.test(message)) {
     return "The model provider rejected the API key. Check it is set correctly and enabled for this model.";
   }
-  return `Upstream model error: ${message}`;
+  return `Upstream model error: ${message}${provider ? ` (${provider})` : ""}`;
 }

@@ -191,6 +191,27 @@ threshold, only a manager can.
 
 ---
 
+## Free-tier failover
+
+The providers run out in uncorrelated ways: Groq caps tokens per day, Google caps requests
+per minute. Since one question spends three or four requests on multi-step tool calls, a
+demo leaning on a single provider stalls partway through an answer, which is exactly what
+happened during testing.
+
+`withFallback` wraps the primary model in `wrapLanguageModel` middleware that catches
+quota failures and re-issues the same call against the next provider. Wiring it at the
+model level rather than the request level is deliberate: `streamText` makes one call per
+step, so a provider that runs out between the tool call and the final answer is stepped
+over without discarding the tool result already in hand.
+
+Only exhaustion-shaped failures (429, 402, 5xx, quota language) fail over. A 400 or a bad
+key fails identically everywhere, so retrying it across the chain would burn three quotas
+and bury the real error. That distinction is unit tested with fake models, because
+verifying it against real providers would mean deliberately destroying the quota the
+feature exists to conserve.
+
+---
+
 ## Trade-offs
 
 **Policy logic is code, provenance is data.** Fee and credit *rules* are TypeScript;

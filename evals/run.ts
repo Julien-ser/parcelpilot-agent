@@ -93,9 +93,18 @@ const CASES: Case[] = [
     id: "credit-hypothetical-lumenworks",
     user: "lumenworks-ops",
     ask: "A pickup is three hours late because of carrier fault. Should I get a service credit?",
-    // LumenWorks' threshold is 4h, so three hours does NOT qualify.
+    // LumenWorks' threshold is 4h, so three hours does NOT qualify. The answer
+    // must reach that determination: an earlier version passed this case while
+    // actually saying "fault is not established", because the model dropped the
+    // fault the user had just stated.
     expect: ["4"],
-    reject: ["you are eligible", "you will receive"],
+    reject: [
+      "you are eligible",
+      "you will receive",
+      "not established",
+      "cannot confirm",
+      "could not determine",
+    ],
     tools: ["evaluate_service_credit"],
   },
   {

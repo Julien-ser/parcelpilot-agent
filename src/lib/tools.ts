@@ -134,7 +134,10 @@ export function buildTools(session: Session, confirmedTokens: Set<string>) {
         "Decide whether a failed-pickup service credit applies and how much. Pass an order_id for a " +
         "real order, or the hypothetical fields for a 'what if' question such as 'a pickup was 3 hours " +
         "late, do I get a credit?'. Returns a rule trace showing which threshold and amount governed. " +
-        "ALWAYS use this instead of calculating a credit yourself.",
+        "ALWAYS use this instead of calculating a credit yourself. " +
+        "IMPORTANT: pass every fact the user has already stated. If they say the delay was three " +
+        "hours and the carrier was at fault, pass delay_hours: 3 and carrier_fault: true. Dropping a " +
+        "stated fact makes this tool report it as unestablished and refuse to answer.",
       inputSchema: z.object({
         order_id: z.string().optional(),
         account: z
@@ -146,8 +149,16 @@ export function buildTools(session: Session, confirmedTokens: Set<string>) {
         carrier_fault: z
           .boolean()
           .optional()
-          .describe("Omit if genuinely unknown - the SOP forbids promising a credit then."),
-        customer_fault: z.boolean().optional(),
+          .describe(
+            "True when the user or the record says the carrier was at fault. Omit ONLY when fault " +
+              "is genuinely unestablished; the SOP then forbids promising a credit.",
+          ),
+        customer_fault: z
+          .boolean()
+          .optional()
+          .describe(
+            "False when nothing suggests the customer caused the delay. Omit only when genuinely unknown.",
+          ),
       }),
       execute: async (args) => {
         if (args.order_id) {
