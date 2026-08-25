@@ -39,8 +39,18 @@ export class NoProviderError extends Error {
 }
 
 /**
- * Defaults chosen for tool-calling reliability on a free tier, not for benchmark
- * scores. Override with GROQ_MODEL / GOOGLE_MODEL / OPENROUTER_MODEL.
+ * The chain, in order. Chosen from measured free-tier limits rather than
+ * benchmark scores, because an answer from a slightly weaker model beats a rate
+ * limit error from a better one.
+ *
+ * Groq leads: the largest practical budget of the three, and the best tool
+ * calling of what is free.
+ *
+ * Google contributes TWO entries, and the order matters. gemini-3.6-flash is the
+ * stronger model but its free tier allows only 20 requests PER DAY
+ * (GenerateRequestsPerDayPerProjectPerModel-FreeTier), which is roughly five
+ * questions. gemini-2.5-flash is weaker on nuance but has real daily headroom,
+ * so it sits behind 3.6 as the one that keeps a demo alive.
  */
 const DEFAULTS: Record<ProviderName, string> = {
   groq: "openai/gpt-oss-120b",
@@ -48,11 +58,11 @@ const DEFAULTS: Record<ProviderName, string> = {
   openrouter: "anthropic/claude-haiku-4.5",
 };
 
-/**
- * Groq leads: it allows roughly 30 requests per minute against Google's 20, and
- * per-minute limits are what someone clicking through a demo actually hits.
- * Google's daily headroom then covers the case where Groq's token budget is gone.
- */
+/** Extra models tried after a provider's primary model is spent. */
+const SECONDARY: Partial<Record<ProviderName, string[]>> = {
+  google: ["gemini-2.5-flash"],
+};
+
 const ORDER: ProviderName[] = ["groq", "google", "openrouter"];
 
 interface Candidate {
@@ -61,18 +71,28 @@ interface Candidate {
   model: LanguageModelV4;
 }
 
-function build(provider: ProviderName): Candidate | null {
+/** A provider's primary model plus any secondary models, in order. */
+function buildAll(provider: ProviderName): Candidate[] {
+  const primary = build(provider);
+  if (!primary) return [];
+  const extras = (SECONDARY[provider] ?? [])
+    .map((modelId) => build(provider, modelId))
+    .filter((c): c is Candidate => c !== null);
+  return [primary, ...extras];
+}
+
+function build(provider: ProviderName, overrideModelId?: string): Candidate | null {
   switch (provider) {
     case "groq": {
       const key = process.env.GROQ_API_KEY;
       if (!key) return null;
-      const modelId = process.env.GROQ_MODEL ?? DEFAULTS.groq;
+      const modelId = overrideModelId ?? process.env.GROQ_MODEL ?? DEFAULTS.groq;
       return { provider, modelId, model: createGroq({ apiKey: key })(modelId) as LanguageModelV4 };
     }
     case "google": {
       const key = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
       if (!key) return null;
-      const modelId = process.env.GOOGLE_MODEL ?? DEFAULTS.google;
+      const modelId = overrideModelId ?? process.env.GOOGLE_MODEL ?? DEFAULTS.google;
       return {
         provider,
         modelId,
@@ -82,7 +102,7 @@ function build(provider: ProviderName): Candidate | null {
     case "openrouter": {
       const key = process.env.OPENROUTER_API_KEY;
       if (!key) return null;
-      const modelId = process.env.OPENROUTER_MODEL ?? DEFAULTS.openrouter;
+      const modelId = overrideModelId ?? process.env.OPENROUTER_MODEL ?? DEFAULTS.openrouter;
       return {
         provider,
         modelId,
@@ -110,7 +130,7 @@ export function isExhaustion(err: unknown): boolean {
 export function resolveModel(): ResolvedModel {
   const forced = process.env.MODEL_PROVIDER?.toLowerCase() as ProviderName | undefined;
 
-  const available = ORDER.map(build).filter((c): c is Candidate => c !== null);
+  const available = ORDER.flatMap(buildAll);
   if (available.length === 0) throw new NoProviderError();
 
   // A forced provider leads the chain but does not remove the safety net.
